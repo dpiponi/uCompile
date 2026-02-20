@@ -222,6 +222,16 @@ class TestLlvmAssemble(unittest.TestCase):
             "print x;\n"
         )
 
+    def test_fn_call(self):
+        self.compile_and_assemble(
+            "define f(x) { return x + 1; }\n"
+            "define df(x) { return x * 2; }\n"
+            "fid = fn(\"f\");\n"
+            "did = fn(\"df\");\n"
+            "print call(fid, 2);\n"
+            "print call(did, 3);\n"
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

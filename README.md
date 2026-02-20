@@ -21,6 +21,7 @@ A tiny, bc-like compiler that emits LLVM IR (`.ll`).
 - Augmented assign: `+= -= *= /=`
 - Increment/decrement: `++x`, `x++`, `--x`, `x--`
 - Function refs (by name) for builtins like `newton("f","df", x0, iters)`
+- Function IDs: `id = fn("f")`, `call(id, x)`
 
 ## Usage
 ```bash

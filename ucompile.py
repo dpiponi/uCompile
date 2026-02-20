@@ -545,6 +545,7 @@ class Compiler:
         self.vars: Dict[str, str] = {}
         self.arrays: Dict[str, str] = {}
         self.entry_insert_idx: Optional[int] = None
+        self.func_ids: Dict[str, int] = {}
 
     def compile(self, program: Program) -> str:
         b = self.builder
@@ -573,9 +574,13 @@ class Compiler:
         b.emit('declare double @pow(double, double)')
         b.emit('@.fmt = private constant [4 x i8] c"%g\\0A\\00"')
         b.emit('')
+        # Assign function IDs for call() dispatch.
+        self.func_ids = {f.name: i for i, f in enumerate(program.funcs)}
         b.global_insert_idx = len(b.lines)
         self.emit_array_helper()
+        self.emit_call_helper()
         b.emit('')
+
         for func in program.funcs:
             self.emit_func(func)
             b.emit('')
@@ -826,6 +831,10 @@ class Compiler:
         if isinstance(expr, IncDec):
             return self.emit_incdec(expr)
         if isinstance(expr, Call):
+            if expr.name == "fn":
+                return self.emit_fn(expr)
+            if expr.name == "call":
+                return self.emit_call_by_id(expr)
             if expr.name == "newton":
                 return self.emit_newton(expr)
             if expr.name == "rand" and len(expr.args) == 0:
@@ -879,6 +888,26 @@ class Compiler:
                 raise ValueError(f"Unknown operator: {expr.op}")
             return tmp
         raise TypeError(f"Unknown expr type: {type(expr)}")
+
+    def emit_fn(self, call: Call) -> str:
+        if len(call.args) != 1 or not isinstance(call.args[0], StringLit):
+            raise ValueError("fn expects fn(\"name\")")
+        name = call.args[0].value
+        if name not in self.func_ids:
+            raise ValueError(f"Unknown function name: {name}")
+        return str(float(self.func_ids[name]))
+
+    def emit_call_by_id(self, call: Call) -> str:
+        b = self.builder
+        if len(call.args) != 2:
+            raise ValueError("call expects call(id, x)")
+        id_val = self.emit_expr(call.args[0])
+        x_val = self.emit_expr(call.args[1])
+        id_i64 = b.fresh()
+        b.emit(f"  {id_i64} = fptosi double {id_val} to i64")
+        tmp = b.fresh()
+        b.emit(f"  {tmp} = call double @__uc_call(i64 {id_i64}, double {x_val})")
+        return tmp
 
     def emit_newton(self, call: Call) -> str:
         b = self.builder
@@ -1104,6 +1133,22 @@ class Compiler:
         b.emit("  %data2 = load double*, double** %data_ptr")
         b.emit("  %ptr = getelementptr double, double* %data2, i64 %idx")
         b.emit("  ret double* %ptr")
+        b.emit("}")
+
+    def emit_call_helper(self) -> None:
+        b = self.builder
+        b.emit("define double @__uc_call(i64 %id, double %x) {")
+        b.emit("entry:")
+        b.emit("  switch i64 %id, label %default [")
+        for name, fid in self.func_ids.items():
+            b.emit(f"    i64 {fid}, label %f_{name}")
+        b.emit("  ]")
+        for name, fid in self.func_ids.items():
+            b.emit(f"f_{name}:")
+            b.emit(f"  %r_{name} = call double @{name}(double %x)")
+            b.emit(f"  ret double %r_{name}")
+        b.emit("default:")
+        b.emit("  ret double 0.0")
         b.emit("}")
 
     @staticmethod
