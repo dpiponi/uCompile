@@ -1,0 +1,86 @@
+# Simple MLP to learn y = x^2 on [-1, 1]
+# 1 input -> H hidden (tanh) -> 1 output
+
+H = 10;
+EPOCHS = 1000;
+N = 21;
+LR = 0.05;
+
+# Initialize weights (random)
+srand(42);
+i = 0;
+while i < H {
+  w1[i] = (rand() - 0.5) * 0.5;
+  b1[i] = 0;
+  w2[i] = (rand() - 0.5) * 0.5;
+  i = i + 1;
+}
+b2 = 0;
+
+# Training loop
+for (e = 0; e < EPOCHS; e = e + 1) {
+  loss = 0;
+  for (j = 0; j < N; j = j + 1) {
+    x = -1 + 2 * j / (N - 1);
+    y = sin(3 * x);
+
+    # forward
+    i = 0;
+    while i < H {
+      z = w1[i] * x + b1[i];
+      a1[i] = tanh(z);
+      i = i + 1;
+    }
+    yhat = b2;
+    i = 0;
+    while i < H {
+      yhat = yhat + w2[i] * a1[i];
+      i = i + 1;
+    }
+
+    err = yhat - y;
+    loss = loss + err * err;
+
+    # backprop (SGD)
+    d = 2 * err;
+    i = 0;
+    while i < H {
+      w2[i] = w2[i] - LR * d * a1[i];
+      i = i + 1;
+    }
+    b2 = b2 - LR * d;
+
+    i = 0;
+    while i < H {
+      da = d * w2[i];
+      dz = da * (1 - a1[i] * a1[i]);
+      w1[i] = w1[i] - LR * dz * x;
+      b1[i] = b1[i] - LR * dz;
+      i = i + 1;
+    }
+  }
+
+  if e % 50 == 0 {
+    print "epoch=%g loss=%g\n", e, loss / N;
+  }
+}
+
+# Print predictions after training
+print "-----\n";
+for (j = 0; j < N; j = j + 1) {
+  x = -1 + 2 * j / (N - 1);
+  y = x * x;
+  i = 0;
+  while i < H {
+    z = w1[i] * x + b1[i];
+    a1[i] = tanh(z);
+    i = i + 1;
+  }
+  yhat = b2;
+  i = 0;
+  while i < H {
+    yhat = yhat + w2[i] * a1[i];
+    i = i + 1;
+  }
+  print "x=%g y=%g yhat=%g\n", x, y, yhat;
+}

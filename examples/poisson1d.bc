@@ -1,0 +1,51 @@
+# Discretized 1D Poisson: -u'' = f on (0,1) with u(0)=u(1)=0
+# Solve using Jacobi iteration on a small grid.
+
+n = 6;          # interior points
+iters = 25;
+
+# allocate arrays u and unew with implicit size 1024
+
+# spacing h and h^2
+h = 1 / (n + 1);
+h2 = h * h;
+
+# initialize RHS f = 1
+
+i = 0;
+while i < n {
+  u[i] = 0;
+  f[i] = 1;
+  i = i + 1;
+}
+
+# Jacobi iterations
+k = 0;
+while k < iters {
+  i = 0;
+  while i < n {
+    left = 0;
+    right = 0;
+    if i > 0 { left = u[i - 1]; }
+    if i < n - 1 { right = u[i + 1]; }
+    unew[i] = 0.5 * (left + right + h2 * f[i]);
+    i = i + 1;
+  }
+
+  i = 0;
+  while i < n {
+    u[i] = unew[i];
+    i = i + 1;
+  }
+
+  k = k + 1;
+}
+
+# print solution
+print 0;  # boundary u(0)
+i = 0;
+while i < n {
+  print u[i];
+  i = i + 1;
+}
+print 0;  # boundary u(1)
