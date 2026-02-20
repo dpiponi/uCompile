@@ -56,6 +56,16 @@ def lex(src: str) -> List[Token]:
         if c.isspace():
             i += 1
             continue
+        if c in "+-*/" and i + 1 < n:
+            nxt = src[i + 1]
+            if nxt == "=":
+                add(c + "=", c + "=", i)
+                i += 2
+                continue
+            if c in "+-" and nxt == c:
+                add(c + c, c + c, i)
+                i += 2
+                continue
         if c in SINGLE_CHAR:
             # Multi-char operators.
             if c in ("<", ">", "=", "!") and i + 1 < n and src[i + 1] == "=":
@@ -162,6 +172,13 @@ class Assign(Stmt):
 
 
 @dataclass
+class AugAssign(Stmt):
+    target: Expr
+    op: str
+    expr: Expr
+
+
+@dataclass
 class Print(Stmt):
     fmt: Optional[str]
     args: List[Expr]
@@ -202,6 +219,13 @@ class Return(Stmt):
 class Call(Expr):
     name: str
     args: List[Expr]
+
+
+@dataclass
+class IncDec(Expr):
+    target: Expr
+    op: str
+    pre: bool
 
 
 @dataclass
@@ -317,38 +341,53 @@ class Parser:
             return Print(None, args)
         if tok.kind == "IDENT":
             # Lookahead for assignment or index assignment
-            if self.tokens[self.i + 1].kind in ("=", "["):
+            if self.tokens[self.i + 1].kind in ("=", "+=", "-=", "*=", "/=", "["):
+                saved = self.i
                 name = self.next().value
                 if self.peek().kind == "[":
                     self.next()
                     idx = self.parse_expr()
                     self.expect("]")
-                    self.expect("=")
+                    if self.peek().kind in ("=", "+=", "-=", "*=", "/="):
+                        op = self.next().kind
+                        expr = self.parse_expr()
+                        self.expect(";")
+                        if op == "=":
+                            return Assign(Index(name, idx), expr)
+                        return AugAssign(Index(name, idx), op, expr)
+                    # Not an assignment; reset and parse as expression stmt.
+                    self.i = saved
+                if self.peek().kind in ("=", "+=", "-=", "*=", "/="):
+                    op = self.next().kind
                     expr = self.parse_expr()
                     self.expect(";")
-                    return Assign(Index(name, idx), expr)
-                self.expect("=")
-                expr = self.parse_expr()
-                self.expect(";")
-                return Assign(Var(name), expr)
+                    if op == "=":
+                        return Assign(Var(name), expr)
+                    return AugAssign(Var(name), op, expr)
         expr = self.parse_expr()
         self.expect(";")
         return ExprStmt(expr)
 
     def parse_for_part(self) -> Stmt:
         tok = self.peek()
-        if tok.kind == "IDENT" and self.tokens[self.i + 1].kind in ("=", "["):
+        if tok.kind == "IDENT" and self.tokens[self.i + 1].kind in ("=", "+=", "-=", "*=", "/=", "["):
             name = self.next().value
             if self.peek().kind == "[":
                 self.next()
                 idx = self.parse_expr()
                 self.expect("]")
-                self.expect("=")
+                if self.peek().kind in ("=", "+=", "-=", "*=", "/="):
+                    op = self.next().kind
+                    expr = self.parse_expr()
+                    if op == "=":
+                        return Assign(Index(name, idx), expr)
+                    return AugAssign(Index(name, idx), op, expr)
+            if self.peek().kind in ("=", "+=", "-=", "*=", "/="):
+                op = self.next().kind
                 expr = self.parse_expr()
-                return Assign(Index(name, idx), expr)
-            self.expect("=")
-            expr = self.parse_expr()
-            return Assign(Var(name), expr)
+                if op == "=":
+                    return Assign(Var(name), expr)
+                return AugAssign(Var(name), op, expr)
         return ExprStmt(self.parse_expr())
 
     def parse_funcdef(self) -> FuncDef:
@@ -406,6 +445,12 @@ class Parser:
         return node
 
     def parse_unary(self) -> Expr:
+        if self.peek().kind in ("++", "--"):
+            op = self.next().kind
+            target = self.parse_unary()
+            if not isinstance(target, (Var, Index)):
+                raise SyntaxError("++/-- requires a variable or array element")
+            return IncDec(target, op, True)
         if self.peek().kind in ("+", "-"):
             op = self.next().kind
             right = self.parse_unary()
@@ -430,13 +475,21 @@ class Parser:
                         self.next()
                         args.append(self.parse_expr())
                 self.expect(")")
-                return Call(name, args)
-            if self.peek().kind == "[":
-                self.next()
-                idx = self.parse_expr()
-                self.expect("]")
-                return Index(name, idx)
-            return Var(name)
+                expr: Expr = Call(name, args)
+            else:
+                if self.peek().kind == "[":
+                    self.next()
+                    idx = self.parse_expr()
+                    self.expect("]")
+                    expr = Index(name, idx)
+                else:
+                    expr = Var(name)
+            if self.peek().kind in ("++", "--"):
+                op = self.next().kind
+                if not isinstance(expr, (Var, Index)):
+                    raise SyntaxError("++/-- requires a variable or array element")
+                return IncDec(expr, op, False)
+            return expr
         if tok.kind == "(":
             self.next()
             expr = self.parse_expr()
@@ -578,6 +631,9 @@ class Compiler:
                 self.builder.emit(f"  store double {val}, double* {ptr}")
                 return
             raise TypeError(f"Invalid assignment target: {type(stmt.target)}")
+            return
+        if isinstance(stmt, AugAssign):
+            self.emit_augassign(stmt)
             return
         if isinstance(stmt, If):
             self.emit_if(stmt)
@@ -757,6 +813,8 @@ class Compiler:
             tmp = b.fresh()
             b.emit(f"  {tmp} = load double, double* {ptr}")
             return tmp
+        if isinstance(expr, IncDec):
+            return self.emit_incdec(expr)
         if isinstance(expr, Call):
             if expr.name == "rand" and len(expr.args) == 0:
                 ri = b.fresh()
@@ -809,6 +867,46 @@ class Compiler:
                 raise ValueError(f"Unknown operator: {expr.op}")
             return tmp
         raise TypeError(f"Unknown expr type: {type(expr)}")
+
+    def emit_incdec(self, expr: IncDec) -> str:
+        b = self.builder
+        ptr = self.emit_target_ptr(expr.target)
+        old = b.fresh()
+        b.emit(f"  {old} = load double, double* {ptr}")
+        delta = "1.0"
+        new = b.fresh()
+        if expr.op == "++":
+            b.emit(f"  {new} = fadd double {old}, {delta}")
+        else:
+            b.emit(f"  {new} = fsub double {old}, {delta}")
+        b.emit(f"  store double {new}, double* {ptr}")
+        return new if expr.pre else old
+
+    def emit_augassign(self, stmt: AugAssign) -> None:
+        b = self.builder
+        ptr = self.emit_target_ptr(stmt.target)
+        old = b.fresh()
+        b.emit(f"  {old} = load double, double* {ptr}")
+        rhs = self.emit_expr(stmt.expr)
+        new = b.fresh()
+        if stmt.op == "+=":
+            b.emit(f"  {new} = fadd double {old}, {rhs}")
+        elif stmt.op == "-=":
+            b.emit(f"  {new} = fsub double {old}, {rhs}")
+        elif stmt.op == "*=":
+            b.emit(f"  {new} = fmul double {old}, {rhs}")
+        elif stmt.op == "/=":
+            b.emit(f"  {new} = fdiv double {old}, {rhs}")
+        else:
+            raise ValueError(f"Unknown aug-assign: {stmt.op}")
+        b.emit(f"  store double {new}, double* {ptr}")
+
+    def emit_target_ptr(self, target: Expr) -> str:
+        if isinstance(target, Var):
+            return self.ensure_var(target.name)
+        if isinstance(target, Index):
+            return self.emit_index_ptr(target)
+        raise TypeError(f"Invalid target: {type(target)}")
 
     def emit_printf(self, fmt_text: str, args: List[Expr]) -> None:
         b = self.builder

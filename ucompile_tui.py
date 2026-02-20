@@ -12,6 +12,7 @@ import time
 from typing import List, Tuple, Optional
 import ctypes
 import ctypes.util
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 COMPILER = os.path.join(ROOT, "ucompile.py")
@@ -208,6 +209,50 @@ def run(stdscr: "curses._CursesWindow", initial: str, path: str | None) -> None:
     def current_source() -> str:
         return "\n".join(buf)
 
+    def bump_number_at_cursor(delta: int) -> None:
+        line = buf[cur_y]
+        if not line:
+            return
+        if cur_x >= len(line):
+            return
+        # Find numeric token bounds containing cursor.
+        i = cur_x
+        if not (line[i].isdigit() or line[i] == "."):
+            return
+        start = i
+        end = i + 1
+        while start > 0 and (line[start - 1].isdigit() or line[start - 1] == "."):
+            start -= 1
+        # Optional leading sign
+        if start > 0 and line[start - 1] == "-" and (start - 1 == 0 or not line[start - 2].isalnum()):
+            start -= 1
+        while end < len(line) and (line[end].isdigit() or line[end] == "."):
+            end += 1
+        token = line[start:end]
+        if token.count(".") > 1 or token in ("-", ".", "-."):
+            return
+        neg = token.startswith("-")
+        num = token[1:] if neg else token
+        if "." in num:
+            int_part, frac_part = num.split(".", 1)
+            decimals = len(frac_part)
+            step = Decimal(1).scaleb(-decimals)
+            try:
+                val = Decimal(token)
+            except InvalidOperation:
+                return
+            val = val + (step if delta > 0 else -step)
+            fmt = f"{{0:.{decimals}f}}"
+            new_token = fmt.format(val)
+        else:
+            try:
+                val = int(token)
+            except ValueError:
+                return
+            val += 1 if delta > 0 else -1
+            new_token = str(val)
+        buf[cur_y] = line[:start] + new_token + line[end:]
+
     def save_buffer() -> Tuple[bool, str]:
         if not path:
             return False, "No file path provided"
@@ -399,9 +444,17 @@ def run(stdscr: "curses._CursesWindow", initial: str, path: str | None) -> None:
         elif ch in (ord("\x18"), 24):  # Ctrl+X
             ok, msg = save_buffer()
             last_save_msg = msg
+        elif ch in (ord("\x15"), 21):  # Ctrl+U
+            bump_number_at_cursor(1)
+        elif ch in (ord("\x04"), 4):  # Ctrl+D
+            bump_number_at_cursor(-1)
         elif ch in (ord("\x01"), 1):  # Ctrl+A
             cur_x = 0
         elif ch in (ord("\x05"), 5):  # Ctrl+E
+            cur_x = len(buf[cur_y])
+        elif ch in (curses.KEY_HOME,):
+            cur_x = 0
+        elif ch in (curses.KEY_END,):
             cur_x = len(buf[cur_y])
         elif ch in (curses.KEY_LEFT,):
             if cur_x > 0:
@@ -423,6 +476,14 @@ def run(stdscr: "curses._CursesWindow", initial: str, path: str | None) -> None:
             if cur_y + 1 < len(buf):
                 cur_y += 1
                 cur_x = min(cur_x, len(buf[cur_y]))
+        elif ch in (curses.KEY_PPAGE,):  # Page Up
+            cur_y = max(0, cur_y - edit_h)
+            cur_x = min(cur_x, len(buf[cur_y]))
+            top = max(0, top - edit_h)
+        elif ch in (curses.KEY_NPAGE,):  # Page Down
+            cur_y = min(len(buf) - 1, cur_y + edit_h)
+            cur_x = min(cur_x, len(buf[cur_y]))
+            top = min(max(0, len(buf) - edit_h), top + edit_h)
         elif ch in (curses.KEY_BACKSPACE, 127, 8):
             if cur_x > 0:
                 line = buf[cur_y]
@@ -490,8 +551,13 @@ def main() -> int:
     path = None
     if len(sys.argv) > 1:
         path = sys.argv[1]
-        with open(path, "r", encoding="utf-8") as f:
-            initial = f.read()
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                initial = f.read()
+        else:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("")
+            initial = ""
     curses.wrapper(run, initial, path)
     return 0
 

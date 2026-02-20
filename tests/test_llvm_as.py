@@ -197,6 +197,23 @@ class TestLlvmAssemble(unittest.TestCase):
             "print rand();\n"
         )
 
+    def test_augassign_incdec(self):
+        self.compile_and_assemble(
+            "x = 1;\n"
+            "x += 2;\n"
+            "x *= 3;\n"
+            "x -= 4;\n"
+            "x /= 2;\n"
+            "print x;\n"
+            "i = 0;\n"
+            "i++;\n"
+            "++i;\n"
+            "print i;\n"
+            "a[0] = 1;\n"
+            "a[0]++;\n"
+            "print a[0];\n"
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

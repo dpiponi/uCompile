@@ -2,7 +2,7 @@
 # 1 input -> H hidden (tanh) -> 1 output
 
 H = 10;
-EPOCHS = 1000;
+EPOCHS = 1015;
 N = 21;
 LR = 0.05;
 
@@ -69,7 +69,7 @@ for (e = 0; e < EPOCHS; e = e + 1) {
 print "-----\n";
 for (j = 0; j < N; j = j + 1) {
   x = -1 + 2 * j / (N - 1);
-  y = x * x;
+  y = sin(3 * x);
   i = 0;
   while i < H {
     z = w1[i] * x + b1[i];

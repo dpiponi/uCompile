@@ -18,6 +18,8 @@ A tiny, bc-like compiler that emits LLVM IR (`.ll`).
 - Transcendentals: `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`, `exp`, `log`, `log10`, `sqrt`, `pow`
 - Print formatting: `print "x=%g y=%g\n", x, y;` and `print x, y, x+y;`
 - Random: `rand()` in `[0,1)` and `srand(seed)`
+- Augmented assign: `+= -= *= /=`
+- Increment/decrement: `++x`, `x++`, `--x`, `x--`
 
 ## Usage
 ```bash
