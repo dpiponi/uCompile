@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+*.ll
+*.bc
+*.s
+*.o
+*.out
+*.exe
+a.out
+/test1.*
+/tmp/
+.DS_Store
