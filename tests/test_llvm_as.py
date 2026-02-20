@@ -214,6 +214,14 @@ class TestLlvmAssemble(unittest.TestCase):
             "print a[0];\n"
         )
 
+    def test_newton(self):
+        self.compile_and_assemble(
+            "define f(x) { return x * x - 2; }\n"
+            "define df(x) { return 2 * x; }\n"
+            "x = newton(\"f\", \"df\", 1, 5);\n"
+            "print x;\n"
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

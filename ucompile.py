@@ -222,6 +222,11 @@ class Call(Expr):
 
 
 @dataclass
+class StringLit(Expr):
+    value: str
+
+
+@dataclass
 class IncDec(Expr):
     target: Expr
     op: str
@@ -464,6 +469,9 @@ class Parser:
         if tok.kind == "NUMBER":
             self.next()
             return Number(float(tok.value))
+        if tok.kind == "STRING":
+            self.next()
+            return StringLit(tok.value)
         if tok.kind == "IDENT":
             name = self.next().value
             if self.peek().kind == "(":
@@ -803,6 +811,8 @@ class Compiler:
         if isinstance(expr, Number):
             # Emit literal directly.
             return self.format_double(expr.value)
+        if isinstance(expr, StringLit):
+            raise ValueError("String literals are only allowed in print or special forms")
         if isinstance(expr, Var):
             slot = self.ensure_var(expr.name)
             tmp = b.fresh()
@@ -816,6 +826,8 @@ class Compiler:
         if isinstance(expr, IncDec):
             return self.emit_incdec(expr)
         if isinstance(expr, Call):
+            if expr.name == "newton":
+                return self.emit_newton(expr)
             if expr.name == "rand" and len(expr.args) == 0:
                 ri = b.fresh()
                 b.emit(f"  {ri} = call i32 @rand()")
@@ -867,6 +879,68 @@ class Compiler:
                 raise ValueError(f"Unknown operator: {expr.op}")
             return tmp
         raise TypeError(f"Unknown expr type: {type(expr)}")
+
+    def emit_newton(self, call: Call) -> str:
+        b = self.builder
+        if len(call.args) not in (3, 4):
+            raise ValueError("newton expects newton(\"f\", \"df\", x0 [, iters])")
+        if not isinstance(call.args[0], StringLit) or not isinstance(call.args[1], StringLit):
+            raise ValueError("newton expects function names as string literals")
+        f_name = call.args[0].value
+        df_name = call.args[1].value
+        x0 = self.emit_expr(call.args[2])
+        if len(call.args) == 4:
+            iters_f = self.emit_expr(call.args[3])
+            iters = b.fresh()
+            b.emit(f"  {iters} = fptosi double {iters_f} to i64")
+        else:
+            iters = "20"
+
+        # Allocate loop vars in entry
+        x_slot = b.fresh()
+        i_slot = b.fresh()
+        self.insert_entry_lines(
+            [
+                f"  {x_slot} = alloca double",
+                f"  {i_slot} = alloca i64",
+            ]
+        )
+        b.emit(f"  store double {x0}, double* {x_slot}")
+        b.emit(f"  store i64 0, i64* {i_slot}")
+
+        cond_lbl = b.fresh_label("newton_cond")
+        body_lbl = b.fresh_label("newton_body")
+        end_lbl = b.fresh_label("newton_end")
+
+        b.emit(f"  br label %{cond_lbl}")
+        b.emit(f"{cond_lbl}:")
+        i_val = b.fresh()
+        b.emit(f"  {i_val} = load i64, i64* {i_slot}")
+        cmp = b.fresh()
+        b.emit(f"  {cmp} = icmp ult i64 {i_val}, {iters}")
+        b.emit(f"  br i1 {cmp}, label %{body_lbl}, label %{end_lbl}")
+
+        b.emit(f"{body_lbl}:")
+        x_val = b.fresh()
+        b.emit(f"  {x_val} = load double, double* {x_slot}")
+        fx = b.fresh()
+        dfx = b.fresh()
+        b.emit(f"  {fx} = call double @{f_name}(double {x_val})")
+        b.emit(f"  {dfx} = call double @{df_name}(double {x_val})")
+        div = b.fresh()
+        b.emit(f"  {div} = fdiv double {fx}, {dfx}")
+        x_new = b.fresh()
+        b.emit(f"  {x_new} = fsub double {x_val}, {div}")
+        b.emit(f"  store double {x_new}, double* {x_slot}")
+        i_next = b.fresh()
+        b.emit(f"  {i_next} = add i64 {i_val}, 1")
+        b.emit(f"  store i64 {i_next}, i64* {i_slot}")
+        b.emit(f"  br label %{cond_lbl}")
+
+        b.emit(f"{end_lbl}:")
+        x_final = b.fresh()
+        b.emit(f"  {x_final} = load double, double* {x_slot}")
+        return x_final
 
     def emit_incdec(self, expr: IncDec) -> str:
         b = self.builder

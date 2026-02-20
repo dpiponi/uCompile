@@ -20,6 +20,7 @@ A tiny, bc-like compiler that emits LLVM IR (`.ll`).
 - Random: `rand()` in `[0,1)` and `srand(seed)`
 - Augmented assign: `+= -= *= /=`
 - Increment/decrement: `++x`, `x++`, `--x`, `x--`
+- Function refs (by name) for builtins like `newton("f","df", x0, iters)`
 
 ## Usage
 ```bash
