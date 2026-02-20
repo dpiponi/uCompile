@@ -59,7 +59,8 @@ def compile_source(src: str) -> Tuple[bool, str, Optional[int]]:
 def _init_llvm() -> Tuple[bool, str]:
     if llvm is None:
         return False, "llvmlite not installed (pip install -r requirements.txt)"
-    llvm.initialize()
+    # llvm.initialize()
+    
     llvm.initialize_native_target()
     llvm.initialize_native_asmprinter()
     return True, ""

@@ -1,10 +1,14 @@
 # Simple MLP to learn y = x^2 on [-1, 1]
 # 1 input -> H hidden (tanh) -> 1 output
 
-H = 10;
-EPOCHS = 1015;
+H = 20;
+EPOCHS = 10015;
 N = 21;
-LR = 0.05;
+LR = 0.016;
+
+define f(x) {
+  return sin(5 * x);
+}
 
 # Initialize weights (random)
 srand(42);
@@ -22,7 +26,7 @@ for (e = 0; e < EPOCHS; e = e + 1) {
   loss = 0;
   for (j = 0; j < N; j = j + 1) {
     x = -1 + 2 * j / (N - 1);
-    y = sin(3 * x);
+    y = f(x);
 
     # forward
     i = 0;
@@ -60,7 +64,7 @@ for (e = 0; e < EPOCHS; e = e + 1) {
     }
   }
 
-  if e % 50 == 0 {
+  if e % 250 == 0 {
     print "epoch=%g loss=%g\n", e, loss / N;
   }
 }
@@ -69,7 +73,7 @@ for (e = 0; e < EPOCHS; e = e + 1) {
 print "-----\n";
 for (j = 0; j < N; j = j + 1) {
   x = -1 + 2 * j / (N - 1);
-  y = sin(3 * x);
+  y = f(x);
   i = 0;
   while i < H {
     z = w1[i] * x + b1[i];

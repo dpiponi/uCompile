@@ -1,16 +1,2 @@
-__pycache__/
-*.pyc
-*.pyo
-*.ll
-*.bc
-*.s
-*.o
-*.out
-*.exe
-a.out
-/test1.*
-/tmp/
-.DS_Store
-
-# Keep example sources
-!examples/*.bc
+# Created by venv; see https://docs.python.org/3/library/venv.html
+*
